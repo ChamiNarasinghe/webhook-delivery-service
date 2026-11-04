@@ -1,0 +1,24 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local tenant configuration
+internal/config/tenants.local.json
+
+# Executables
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Logs
+*.log
+
+# IDE and editor
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db

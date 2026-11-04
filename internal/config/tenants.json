@@ -1,0 +1,14 @@
+
+{
+  "tenants": {
+    "acme": {
+      "webhook_url": "http://localhost:9000/hooks/acme"
+    },
+    "globex": {
+      "webhook_url": "http://localhost:9000/hooks/globex"
+    },
+    "initech": {
+      "webhook_url": "http://localhost:9000/hooks/initech"
+    }
+  }
+}
