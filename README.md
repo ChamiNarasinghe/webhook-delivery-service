@@ -37,7 +37,13 @@ webhook-delivery-service/
 │   ├── config/
 │   ├── database/
 │   ├── delivery/
+│   │   ├── sender.go
+│   │   ├── sender_test.go
+│   │   ├── signature.go
+│   │   └── signature_test.go
 │   ├── handlers/
+│   │   ├── events.go
+│   │   └── events_test.go
 │   ├── models/
 │   ├── repository/
 │   └── worker/
@@ -45,6 +51,7 @@ webhook-delivery-service/
 │   └── 001_create_tables.sql
 ├── .env.example
 ├── .gitignore
+├── DECISIONS.md
 ├── docker-compose.yml
 ├── go.mod
 ├── go.sum
@@ -63,8 +70,10 @@ Install the following:
 
 ### 1. Clone the repository
 
+Open PowerShell and run:
+
 ```powershell
-git clone <YOUR_REPOSITORY_URL>
+git clone https://github.com/ChamiNarasinghe/webhook-delivery-service.git
 cd webhook-delivery-service
 ```
 
@@ -96,13 +105,15 @@ $env:WEBHOOK_SECRET_GLOBEX = "your-globex-secret"
 $env:WEBHOOK_SECRET_INITECH = "your-initech-secret"
 ```
 
-The optional database connection variable is:
+The database connection variable can also be configured:
 
 ```powershell
 $env:DATABASE_URL = "postgres://webhook_user:webhook_pass@localhost:5432/webhook_db?sslmode=disable"
 ```
 
-`.env.example` documents the required variables. The application reads environment variables directly; it does not automatically load `.env.example`.
+If `DATABASE_URL` is not set, the application uses its configured default connection string.
+
+The `.env.example` file documents the environment variables. The application reads environment variables directly; it does not automatically load `.env.example`.
 
 ### 4. Configure tenants
 
@@ -132,13 +143,15 @@ Example:
 
 Tenant secrets are supplied through environment variables, not stored in this JSON file.
 
-### 5. Start the service
+### 5. Download dependencies
 
-Download dependencies:
+From the project root, run:
 
 ```powershell
-go mod tidy
+go mod download
 ```
+
+### 6. Start the service
 
 Run the application:
 
@@ -156,9 +169,21 @@ Database migrations are executed automatically when the application starts.
 
 ## Running the Mock Receiver
 
-The supplied mock receiver is used to test webhook deliveries. Start it in a separate terminal.
+The supplied mock receiver is used to test webhook deliveries.
 
-Navigate to the mock receiver directory:
+The mock receiver is provided separately as part of the assignment. Place its folder alongside the `webhook-delivery-service` folder before running the commands below.
+
+The expected folder structure is:
+
+```text
+webhook-task/
+├── webhook-delivery-service/
+└── mock-receiver/
+```
+
+Start the mock receiver in a separate PowerShell terminal.
+
+Navigate to its directory:
 
 ```powershell
 cd ..\mock-receiver
@@ -173,6 +198,8 @@ go run . -fail-rate 0 -slow-rate 0 -limit-rate 0 -secrets "acme=acme-secret,glob
 The mock receiver listens on port `9000`.
 
 Keep this terminal running while testing the delivery service.
+
+**Important:** The mock receiver secrets must match the corresponding webhook secrets configured for the Go service.
 
 ## API Endpoints
 
@@ -212,9 +239,11 @@ Invoke-RestMethod `
 
 The service responds with HTTP `202 Accepted` when the event has been successfully queued.
 
+The response includes the generated event ID and its initial status.
+
 ### 2. Retrieve an event
 
-Replace the example ID with the ID returned when creating an event:
+Replace `YOUR_EVENT_ID` with the ID returned when creating an event:
 
 ```powershell
 Invoke-RestMethod `
@@ -236,19 +265,23 @@ The response includes the number of dead-letter events and their details.
 
 ## Delivery Behaviour
 
-### Retry strategy
+### Retry Strategy
 
-Failed deliveries are retried using exponential backoff. The delay increases between attempts and is capped at one hour. When a receiver supplies a valid `Retry-After` value, the service uses that delay.
+Failed deliveries are retried using exponential backoff. The delay increases between attempts and is capped at one hour.
+
+When a receiver supplies a valid `Retry-After` value, the service uses that delay.
 
 Events are no longer retried once their 24-hour delivery deadline has been reached. They are marked as `dead` and can be inspected through the dead-letter endpoint.
 
-### Tenant isolation and ordering
+### Tenant Isolation and Ordering
 
-Each tenant has an independent sequential delivery worker. Events for the same tenant are processed in creation order, while different tenants can be processed concurrently.
+Each tenant has an independent sequential delivery worker.
+
+Events for the same tenant are processed in creation order, while different tenants can be processed concurrently.
 
 This prevents a slow or unavailable tenant endpoint from blocking deliveries to other tenants.
 
-### Request signatures
+### Request Signatures
 
 Every outgoing webhook request includes:
 
@@ -258,9 +291,13 @@ Every outgoing webhook request includes:
 
 The signature is generated using the tenant's secret and the exact JSON payload bytes sent in the request.
 
-### Delivery guarantees
+### Delivery Guarantees
 
-The service provides at-least-once delivery. A receiver may receive the same event more than once if a delivery succeeds but the service does not record the success. Receivers should use `X-Event-ID` to handle duplicate requests safely.
+The service provides at-least-once delivery.
+
+A receiver may receive the same event more than once if a delivery succeeds but the service does not record the successful response.
+
+Receivers should use `X-Event-ID` to handle duplicate requests safely through idempotency.
 
 ## Running Tests
 
@@ -268,6 +305,12 @@ Run all Go tests from the project root:
 
 ```powershell
 go test ./...
+```
+
+To run tests with detailed output:
+
+```powershell
+go test ./... -v
 ```
 
 ## Stopping the Service
@@ -293,3 +336,4 @@ The database uses a persistent Docker volume, so stopping or replacing the conta
 - Do not commit real webhook secrets or `.env` files.
 - Use environment variables or a secrets manager for tenant secrets.
 - The credentials in `docker-compose.yml` are for local development and should be replaced with secure credentials in production.
+- Use HTTPS for webhook endpoints in production.
